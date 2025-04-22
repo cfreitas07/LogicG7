@@ -1,60 +1,56 @@
-# LogicG7
+# PIC LED Control via UART
 
-A PyQt6-based application with a modular structure for easy maintenance and feature additions.
+This project demonstrates how to control an LED on a PIC microcontroller using Python through UART communication.
 
-## Features
+## Hardware Requirements
 
-- Modern PyQt6 interface
-- Modular code structure
-- Menu bar with File, Edit, and Help menus
-- Grey central area for content
+- PIC Microcontroller (configured with UART)
+- LED connected to RC6 pin
+- USB to UART converter (if needed)
 
-## Requirements
+## Software Requirements
 
-- Python 3.8 or higher
-- PyQt6
+- Python 3.x
+- PySerial library
+- MPLAB X IDE (for PIC programming)
+- MCC (MPLAB Code Configurator)
 
-## Installation
+## Configuration
 
-1. Clone the repository:
-```bash
-git clone https://github.com/yourusername/LogicG7.git
-cd LogicG7
+### PIC Configuration
+- UART Baud Rate: 9600
+- LED Pin: RC6
+- Command to toggle LED: 0xA1
+- Response after toggle: 'O'
+
+### Python Configuration
+```python
+PORT = 'COM4'      # Change this if your port is different
+BAUDRATE = 9600
+TOGGLE_COMMAND = 0xA1
+EXPECTED_RESPONSE = b'O'
+BLINK_COUNT = 10
+DELAY_BETWEEN_BLINKS = 1  # seconds
 ```
 
-2. Install dependencies:
-```bash
-pip install -r requirements.txt
-```
+## Usage
 
-## Running the Application
+1. Flash the PIC code to your microcontroller
+2. Connect the PIC to your computer via UART
+3. Run the Python script:
+   ```bash
+   python testLED.py
+   ```
 
-To run the application, execute:
-```bash
-python main.py
-```
+## Communication Protocol
 
-## Project Structure
+1. PIC sends 'R' when ready
+2. Python sends 0xA1 to toggle LED
+3. PIC responds with 'O' after successful toggle
 
-```
-LogicG7/
-├── app/
-│   ├── __init__.py
-│   ├── main_window.py
-│   └── menu_bar.py
-├── main.py
-├── requirements.txt
-└── README.md
-```
+## Troubleshooting
 
-## Contributing
-
-1. Fork the repository
-2. Create your feature branch (`git checkout -b feature/AmazingFeature`)
-3. Commit your changes (`git commit -m 'Add some AmazingFeature'`)
-4. Push to the branch (`git push origin feature/AmazingFeature`)
-5. Open a Pull Request
-
-## License
-
-This project is licensed under the MIT License - see the LICENSE file for details. 
+- Verify the correct COM port in Device Manager
+- Ensure baud rate matches on both PIC and Python (9600)
+- Check LED connections to RC6 pin
+- Verify UART connections (TX/RX) 
