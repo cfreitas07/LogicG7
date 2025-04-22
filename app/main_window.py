@@ -1,17 +1,39 @@
 from PyQt6.QtWidgets import (QMainWindow, QWidget, QVBoxLayout,
                              QHBoxLayout, QPushButton, QLabel, QComboBox,
-                             QMenuBar, QMenu, QStatusBar, QMdiArea, QMdiSubWindow)
+                             QMenuBar, QMenu, QStatusBar, QMdiArea, QMdiSubWindow,
+                             QFrame)
 from PyQt6.QtCore import QTimer, Qt
 from PyQt6.QtGui import QPalette, QColor, QAction
 
 from .usb_device import USBDevice
 from .pic_controller import PICController
 
+class StatusLED(QFrame):
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self.setFixedSize(16, 16)
+        self.setFrameShape(QFrame.Shape.Box)
+        self.setFrameShadow(QFrame.Shadow.Raised)
+        self._connected = False
+        self.update_color()
+
+    def set_connected(self, connected: bool):
+        self._connected = connected
+        self.update_color()
+
+    def update_color(self):
+        palette = self.palette()
+        color = QColor("#00FF00") if self._connected else QColor("#FF0000")
+        palette.setColor(QPalette.ColorRole.Window, color)
+        self.setPalette(palette)
+        self.setAutoFillBackground(True)
+
 class SerialWindow(QWidget):
-    def __init__(self, usb_device: USBDevice, pic_controller: PICController, parent=None):
+    def __init__(self, usb_device: USBDevice, pic_controller: PICController, status_callback=None, parent=None):
         super().__init__(parent)
         self.usb_device = usb_device
         self.pic_controller = pic_controller
+        self.status_callback = status_callback
         self._init_ui()
 
     def _init_ui(self):
@@ -58,6 +80,8 @@ class SerialWindow(QWidget):
             self.connect_button.setText("Connect")
             self.status_label.setText("Not Connected")
             self.led_button.setEnabled(False)
+            if self.status_callback:
+                self.status_callback(False, "")
         else:
             if self.port_combo.count() == 0:
                 return
@@ -66,6 +90,8 @@ class SerialWindow(QWidget):
                 self.connect_button.setText("Disconnect")
                 self.status_label.setText(f"Connected to {port_name}")
                 self.led_button.setEnabled(True)
+                if self.status_callback:
+                    self.status_callback(True, port_name)
 
                 # Wait for optional startup byte from PIC
                 self.usb_device.read_data(1)  # Clear buffer
@@ -85,6 +111,7 @@ class MainWindow(QMainWindow):
         self.mdi_windows = {}  # Store references to open windows
         self._init_ui()
         self._create_menu_bar()
+        self._create_status_bar()
 
     def _create_menu_bar(self):
         menubar = self.menuBar()
@@ -114,6 +141,20 @@ class MainWindow(QMainWindow):
         window_menu.addAction(tile_action)
         window_menu.addAction(cascade_action)
 
+    def _create_status_bar(self):
+        self.statusBar = QStatusBar()
+        self.setStatusBar(self.statusBar)
+        
+        # Create status LED
+        self.status_led = StatusLED()
+        self.statusBar.addPermanentWidget(self.status_led)
+        
+        # Create status label
+        self.status_label = QLabel("Not Connected")
+        self.statusBar.addPermanentWidget(self.status_label)
+        
+        self.statusBar.showMessage("Ready")
+
     def _init_ui(self):
         self.setWindowTitle("PIC Logic Gate Controller")
         self.setGeometry(100, 100, 1200, 800)
@@ -121,11 +162,13 @@ class MainWindow(QMainWindow):
         # Create MDI Area
         self.mdi_area = QMdiArea()
         self.setCentralWidget(self.mdi_area)
-        
-        # Status bar
-        self.statusBar = QStatusBar()
-        self.setStatusBar(self.statusBar)
-        self.statusBar.showMessage("Ready")
+
+    def update_connection_status(self, connected: bool, port_name: str = ""):
+        self.status_led.set_connected(connected)
+        if connected:
+            self.status_label.setText(f"Connected to {port_name}")
+        else:
+            self.status_label.setText("Not Connected")
 
     def show_serial_window(self):
         # Check if window already exists
@@ -136,7 +179,11 @@ class MainWindow(QMainWindow):
 
         # Create new serial window
         sub_window = QMdiSubWindow()
-        serial_widget = SerialWindow(self.usb_device, self.pic_controller)
+        serial_widget = SerialWindow(
+            self.usb_device, 
+            self.pic_controller,
+            status_callback=self.update_connection_status
+        )
         sub_window.setWidget(serial_widget)
         sub_window.setAttribute(Qt.WidgetAttribute.WA_DeleteOnClose)
         self.mdi_area.addSubWindow(sub_window)
