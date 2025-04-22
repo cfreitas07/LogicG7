@@ -7,6 +7,7 @@ from PyQt6.QtGui import QPalette, QColor, QAction, QFont
 
 from .usb_device import USBDevice
 from .pic_controller import PICController
+from .logic_controller import LogicControllerWindow
 
 class StatusLED(QFrame):
     def __init__(self, parent=None):
@@ -49,7 +50,9 @@ class MainWindow(QMainWindow):
         
         # Logic Gate Menu
         logic_menu = menubar.addMenu('Logic Gate')
-        # Empty for now
+        logic_controller_action = QAction('Logic Controller', self)
+        logic_controller_action.triggered.connect(self.show_logic_controller)
+        logic_menu.addAction(logic_controller_action)
         
         # Window Menu
         window_menu = menubar.addMenu('Window')
@@ -203,4 +206,22 @@ class MainWindow(QMainWindow):
         # Clean up resources before closing
         if self.usb_device.is_connected():
             self.usb_device.disconnect()
-        event.accept() 
+        event.accept()
+
+    def show_logic_controller(self):
+        # Check if window already exists
+        if 'logic_controller' in self.mdi_windows and not self.mdi_windows['logic_controller'].isHidden():
+            self.mdi_windows['logic_controller'].showNormal()
+            self.mdi_windows['logic_controller'].widget().raise_()
+            return
+
+        # Create new logic controller window
+        sub_window = QMdiSubWindow()
+        logic_controller_widget = LogicControllerWindow(self.usb_device)
+        sub_window.setWidget(logic_controller_widget)
+        sub_window.setAttribute(Qt.WidgetAttribute.WA_DeleteOnClose)
+        self.mdi_area.addSubWindow(sub_window)
+        sub_window.show()
+        
+        # Store reference to the window
+        self.mdi_windows['logic_controller'] = sub_window 
