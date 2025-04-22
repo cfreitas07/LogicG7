@@ -1,9 +1,9 @@
 from PyQt6.QtWidgets import (QMainWindow, QWidget, QVBoxLayout,
                              QHBoxLayout, QPushButton, QLabel, QComboBox,
                              QMenuBar, QMenu, QStatusBar, QMdiArea, QMdiSubWindow,
-                             QFrame)
+                             QFrame, QGroupBox, QGridLayout)
 from PyQt6.QtCore import QTimer, Qt
-from PyQt6.QtGui import QPalette, QColor, QAction
+from PyQt6.QtGui import QPalette, QColor, QAction, QFont
 
 from .usb_device import USBDevice
 from .pic_controller import PICController
@@ -28,81 +28,6 @@ class StatusLED(QFrame):
         self.setPalette(palette)
         self.setAutoFillBackground(True)
 
-class SerialWindow(QWidget):
-    def __init__(self, usb_device: USBDevice, pic_controller: PICController, status_callback=None, parent=None):
-        super().__init__(parent)
-        self.usb_device = usb_device
-        self.pic_controller = pic_controller
-        self.status_callback = status_callback
-        self._init_ui()
-
-    def _init_ui(self):
-        self.setWindowTitle("Serial Communication")
-        layout = QVBoxLayout(self)
-
-        # Connection UI
-        conn_layout = QHBoxLayout()
-        self.port_combo = QComboBox()
-        self.port_combo.setMinimumWidth(200)
-        self.connect_button = QPushButton("Connect")
-        self.connect_button.clicked.connect(self.toggle_connection)
-        self.status_label = QLabel("Not Connected")
-        conn_layout.addWidget(QLabel("Port:"))
-        conn_layout.addWidget(self.port_combo)
-        conn_layout.addWidget(self.connect_button)
-        conn_layout.addWidget(self.status_label)
-
-        # LED Control UI
-        led_layout = QHBoxLayout()
-        self.led_button = QPushButton("Toggle LED")
-        self.led_button.setEnabled(False)
-        self.led_button.clicked.connect(self.toggle_led)
-        self.result_label = QLabel("Status: N/A")
-        led_layout.addWidget(self.led_button)
-        led_layout.addWidget(self.result_label)
-
-        layout.addLayout(conn_layout)
-        layout.addLayout(led_layout)
-        layout.addStretch()
-
-        self.refresh_ports()
-
-    def refresh_ports(self):
-        self.port_combo.clear()
-        ports = self.usb_device.list_available_ports()
-        for port in ports:
-            display_text = f"{port['device']} - {port['description']}"
-            self.port_combo.addItem(display_text, port['device'])
-
-    def toggle_connection(self):
-        if self.usb_device.is_connected():
-            self.usb_device.disconnect()
-            self.connect_button.setText("Connect")
-            self.status_label.setText("Not Connected")
-            self.led_button.setEnabled(False)
-            if self.status_callback:
-                self.status_callback(False, "")
-        else:
-            if self.port_combo.count() == 0:
-                return
-            port_name = self.port_combo.currentData()
-            if self.usb_device.connect(port_name):
-                self.connect_button.setText("Disconnect")
-                self.status_label.setText(f"Connected to {port_name}")
-                self.led_button.setEnabled(True)
-                if self.status_callback:
-                    self.status_callback(True, port_name)
-
-                # Wait for optional startup byte from PIC
-                self.usb_device.read_data(1)  # Clear buffer
-
-    def toggle_led(self):
-        result = self.pic_controller.toggle_led()
-        if result:
-            self.result_label.setText("Status: ✅ Toggled")
-        else:
-            self.result_label.setText("Status: ❌ No response")
-
 class MainWindow(QMainWindow):
     def __init__(self):
         super().__init__()
@@ -126,12 +51,6 @@ class MainWindow(QMainWindow):
         logic_menu = menubar.addMenu('Logic Gate')
         # Empty for now
         
-        # Hardware Menu
-        hardware_menu = menubar.addMenu('Hardware')
-        serial_action = QAction('Serial Communication', self)
-        serial_action.triggered.connect(self.show_serial_window)
-        hardware_menu.addAction(serial_action)
-
         # Window Menu
         window_menu = menubar.addMenu('Window')
         tile_action = QAction('Tile', self)
@@ -159,9 +78,119 @@ class MainWindow(QMainWindow):
         self.setWindowTitle("PIC Logic Gate Controller")
         self.setGeometry(100, 100, 1200, 800)
 
-        # Create MDI Area
+        # Create central widget
+        central_widget = QWidget()
+        self.setCentralWidget(central_widget)
+        
+        # Main layout
+        main_layout = QVBoxLayout(central_widget)
+        main_layout.setSpacing(10)
+        main_layout.setContentsMargins(10, 10, 10, 10)
+        
+        # Serial Communication Group
+        serial_group = QGroupBox("Serial Communication")
+        serial_group.setStyleSheet("""
+            QGroupBox {
+                font-weight: bold;
+                border: 1px solid #CCCCCC;
+                border-radius: 5px;
+                margin-top: 10px;
+                padding-top: 15px;
+            }
+            QGroupBox::title {
+                subcontrol-origin: margin;
+                left: 10px;
+                padding: 0 5px;
+            }
+        """)
+        serial_layout = QGridLayout()
+        serial_layout.setSpacing(10)
+        
+        # Port Selection
+        port_label = QLabel("Port:")
+        port_label.setFont(QFont("Arial", 10))
+        self.port_combo = QComboBox()
+        self.port_combo.setMinimumWidth(300)
+        self.port_combo.setFont(QFont("Arial", 10))
+        
+        # Connect Button
+        self.connect_button = QPushButton("Connect")
+        self.connect_button.setFont(QFont("Arial", 10))
+        self.connect_button.setMinimumWidth(100)
+        self.connect_button.clicked.connect(self.toggle_connection)
+        
+        # Status Label
+        self.conn_status_label = QLabel("Not Connected")
+        self.conn_status_label.setFont(QFont("Arial", 10))
+        self.conn_status_label.setStyleSheet("color: #666666;")
+        
+        # Test Communication Button
+        self.test_button = QPushButton("Test Communication")
+        self.test_button.setFont(QFont("Arial", 10))
+        self.test_button.setMinimumWidth(150)
+        self.test_button.setEnabled(False)
+        self.test_button.clicked.connect(self.test_communication)
+        
+        # Result Label
+        self.result_label = QLabel("Status: N/A")
+        self.result_label.setFont(QFont("Arial", 10))
+        self.result_label.setStyleSheet("color: #666666;")
+        
+        # Add widgets to grid layout
+        serial_layout.addWidget(port_label, 0, 0)
+        serial_layout.addWidget(self.port_combo, 0, 1)
+        serial_layout.addWidget(self.connect_button, 0, 2)
+        serial_layout.addWidget(self.conn_status_label, 0, 3)
+        serial_layout.addWidget(self.test_button, 1, 1)
+        serial_layout.addWidget(self.result_label, 1, 2, 1, 2)
+        
+        serial_group.setLayout(serial_layout)
+        
+        # Add serial group to main layout
+        main_layout.addWidget(serial_group)
+        
+        # Create MDI Area for other windows
         self.mdi_area = QMdiArea()
-        self.setCentralWidget(self.mdi_area)
+        main_layout.addWidget(self.mdi_area)
+        
+        # Refresh ports
+        self.refresh_ports()
+
+    def refresh_ports(self):
+        self.port_combo.clear()
+        ports = self.usb_device.list_available_ports()
+        for port in ports:
+            display_text = f"{port['device']} - {port['description']}"
+            self.port_combo.addItem(display_text, port['device'])
+
+    def toggle_connection(self):
+        if self.usb_device.is_connected():
+            self.usb_device.disconnect()
+            self.connect_button.setText("Connect")
+            self.conn_status_label.setText("Not Connected")
+            self.test_button.setEnabled(False)
+            self.update_connection_status(False, "")
+        else:
+            if self.port_combo.count() == 0:
+                return
+            port_name = self.port_combo.currentData()
+            if self.usb_device.connect(port_name):
+                self.connect_button.setText("Disconnect")
+                self.conn_status_label.setText(f"Connected to {port_name}")
+                self.test_button.setEnabled(True)
+                self.update_connection_status(True, port_name)
+
+                # Wait for optional startup byte from PIC
+                self.usb_device.read_data(1)  # Clear buffer
+
+    def test_communication(self):
+        result = self.pic_controller.toggle_led()
+        if result:
+            self.result_label.setText("Status: ✅ Communication Successful")
+            self.result_label.setStyleSheet("color: #008000;")
+        else:
+            self.result_label.setText("Status: ❌ Communication Failed")
+            self.result_label.setStyleSheet("color: #FF0000;")
 
     def update_connection_status(self, connected: bool, port_name: str = ""):
         self.status_led.set_connected(connected)
@@ -169,28 +198,6 @@ class MainWindow(QMainWindow):
             self.status_label.setText(f"Connected to {port_name}")
         else:
             self.status_label.setText("Not Connected")
-
-    def show_serial_window(self):
-        # Check if window already exists
-        if 'serial' in self.mdi_windows and not self.mdi_windows['serial'].isHidden():
-            self.mdi_windows['serial'].showNormal()
-            self.mdi_windows['serial'].widget().raise_()
-            return
-
-        # Create new serial window
-        sub_window = QMdiSubWindow()
-        serial_widget = SerialWindow(
-            self.usb_device, 
-            self.pic_controller,
-            status_callback=self.update_connection_status
-        )
-        sub_window.setWidget(serial_widget)
-        sub_window.setAttribute(Qt.WidgetAttribute.WA_DeleteOnClose)
-        self.mdi_area.addSubWindow(sub_window)
-        sub_window.show()
-        
-        # Store reference to the window
-        self.mdi_windows['serial'] = sub_window
 
     def closeEvent(self, event):
         # Clean up resources before closing
