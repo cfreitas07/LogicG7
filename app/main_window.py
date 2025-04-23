@@ -209,19 +209,34 @@ class MainWindow(QMainWindow):
         event.accept()
 
     def show_logic_controller(self):
-        # Check if window already exists
-        if 'logic_controller' in self.mdi_windows and not self.mdi_windows['logic_controller'].isHidden():
-            self.mdi_windows['logic_controller'].showNormal()
-            self.mdi_windows['logic_controller'].widget().raise_()
-            return
+        # Check if window exists and is valid
+        if 'logic_controller' in self.mdi_windows:
+            window = self.mdi_windows['logic_controller']
+            try:
+                if window.isVisible():
+                    window.showNormal()
+                    window.widget().raise_()
+                    return
+            except RuntimeError:
+                # Window was deleted, remove the reference
+                del self.mdi_windows['logic_controller']
 
         # Create new logic controller window
         sub_window = QMdiSubWindow()
         logic_controller_widget = LogicControllerWindow(self.usb_device)
         sub_window.setWidget(logic_controller_widget)
         sub_window.setAttribute(Qt.WidgetAttribute.WA_DeleteOnClose)
+        
+        # Connect the destroyed signal to cleanup
+        sub_window.destroyed.connect(lambda: self._cleanup_window('logic_controller'))
+        
         self.mdi_area.addSubWindow(sub_window)
         sub_window.show()
         
         # Store reference to the window
-        self.mdi_windows['logic_controller'] = sub_window 
+        self.mdi_windows['logic_controller'] = sub_window
+
+    def _cleanup_window(self, window_key):
+        """Remove the reference to a destroyed window"""
+        if window_key in self.mdi_windows:
+            del self.mdi_windows[window_key] 
